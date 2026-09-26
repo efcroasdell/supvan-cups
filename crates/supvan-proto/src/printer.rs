@@ -8,6 +8,7 @@ use crate::buffer::{ColourMode, Density, PageOptions};
 use crate::cmd::*;
 use crate::data::DATA_PAYLOAD_SIZE;
 use crate::error::{Error, Result};
+use crate::profile::PrintProfile;
 use crate::speed::calc_speed;
 use crate::status::{MaterialInfo, PrinterStatus};
 use crate::transport::Transport;
@@ -41,11 +42,20 @@ fn ble_target(target: &str) -> Option<&str> {
 /// High-level printer interface over a pluggable transport.
 pub struct Printer {
     transport: Box<dyn Transport>,
+    profile: PrintProfile,
 }
 
 impl Printer {
     pub fn new(transport: Box<dyn Transport>) -> Self {
-        Self { transport }
+        Self { transport, profile: PrintProfile::default() }
+    }
+
+    pub fn set_profile(&mut self, profile: PrintProfile) {
+        self.profile = profile;
+    }
+
+    pub fn profile(&self) -> PrintProfile {
+        self.profile
     }
 
     /// Open a USB HID printer at the given `/dev/hidrawN` path.
