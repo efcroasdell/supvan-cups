@@ -274,6 +274,25 @@ impl Printer {
         Ok(None)
     }
 
+    /// Apply profile-specific interpretation to printer error flags.
+    ///
+    /// E-series captures show `ribbon_end` asserted during normal thermal
+    /// printing, so it is not fatal for that profile. All other existing
+    /// error flags retain their current meaning.
+    fn has_fatal_error(&self, s: &PrinterStatus) -> bool {
+        if !matches!(self.profile, PrintProfile::ESeries) {
+            return s.has_error();
+        }
+
+        s.label_rw_error
+            || s.label_end
+            || s.label_mode_error
+            || s.ribbon_rw_error
+            || s.cover_open
+            || s.head_temp_high
+            || s.label_not_installed
+    }
+
     /// Wait for printing station to become active.
     ///
     /// Aborts early via `Error::InvalidResponse` if the printer raises an
@@ -284,7 +303,7 @@ impl Printer {
         for _ in 0..max_attempts {
             let st = self.query_status().await?;
             if let Some(ref s) = st {
-                if s.has_error() {
+                if self.has_fatal_error(s) {
                     return Err(Error::InvalidResponse(format!(
                         "printer error after START_PRINT: {}",
                         s.error_description().unwrap_or_default()
@@ -305,7 +324,7 @@ impl Printer {
             tokio::time::sleep(Duration::from_millis(20)).await;
             let st = self.query_status().await?;
             if let Some(ref s) = st {
-                if s.has_error() {
+                if self.has_fatal_error(s) {
                     return Err(Error::InvalidResponse(format!(
                         "printer error while waiting for buffer: {}",
                         s.error_description().unwrap_or_default()
@@ -423,7 +442,7 @@ impl Printer {
             .wait_ready(READY_ATTEMPTS)
             .await?
             .ok_or_else(|| Error::InvalidResponse("timeout waiting for device ready".into()))?;
-        if status.has_error() {
+        if self.has_fatal_error(&status) {
             return Err(Error::InvalidResponse(format!(
                 "printer error: {}",
                 status.error_description().unwrap_or_default()
@@ -462,7 +481,7 @@ impl Printer {
                         blocks.len()
                     ))
                 })?;
-            if buf_status.has_error() {
+            if self.has_fatal_error(&buf_status) {
                 self.stop_print().await?;
                 return Err(Error::InvalidResponse(format!(
                     "printer error: {}",
@@ -501,7 +520,7 @@ impl Printer {
             tokio::time::sleep(COMPLETION_POLL_INTERVAL).await;
             if let Some(s) = self.query_status().await? {
                 log::debug!("completion poll: {}", s.summary());
-                if s.has_error() {
+                if self.has_fatal_error(&s) {
                     return Err(Error::InvalidResponse(format!(
                         "printer error while printing: {}",
                         s.error_description().unwrap_or_default()
