@@ -65,12 +65,12 @@ lpadmin -p supvan -E -v "ipp://localhost:8631/ipp/print/<name>" -m everywhere
 ### Permanent queue for desktop applications
 
 The normal architecture uses CUPS' temporary DNS-SD queue. On the tested
-Ubuntu desktop, LibreOffice Writer did not expose the E11 custom media size
-correctly through that temporary queue and instead presented only generic
-standard paper sizes.
+Ubuntu desktop, that queue was sufficient for printing, but LibreOffice Writer
+exposed only generic standard paper sizes through it.
 
-For desktop applications that need the E11's actual label sizes, create a
-permanent driverless queue from the same IPP endpoint:
+Creating a permanent driverless queue from the same IPP endpoint allowed
+LibreOffice to obtain the printer's advertised custom media definitions
+correctly:
 
 ```sh
 sudo lpadmin \
@@ -92,6 +92,9 @@ On the physically tested E11 this includes:
 PageSize/Media Size: 10x10mm.Borderless *15x50mm 50x120mm Custom.WIDTHxHEIGHT
 MediaType/Media Type: Labels Stationery
 ```
+
+The permanent queue is a desktop-client integration workaround; it does not
+change the printer protocol or physical media handling.
 
 For the verified 15 mm x 50 mm media in LibreOffice Writer:
 

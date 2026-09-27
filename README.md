@@ -29,16 +29,13 @@ verified on physical E11 hardware. The E11 also identifies itself internally as
 `G15`, which makes model-based E-series selection unreliable.
 
 Development and testing for this fork has been performed against a physical
-Supvan/Katasymbol E11 advertising as:
+Supvan/Katasymbol E11 with:
 
-- BLE address used during development: `A4:93:40:5F:C7:85`
+- BLE advertising-name prefix: `T0183...`
 - GATT service: `0000fee7-0000-1000-8000-00805f9b34fb`
 - characteristic: `0000fec1-0000-1000-8000-00805f9b34fb`
 - reported device name: `G15`
 - reported material: 15 mm × 50 mm
-
-The Bluetooth address above is included only as a record of the development
-hardware and is not hard-coded into the driver.
 
 ## Additional prior work credited
 
@@ -131,28 +128,31 @@ printing stack:
 6. Standard IPP landscape orientation produces the expected left-to-right
    printing along the label ribbon.
 
-For the physically verified 15 mm x 50 mm labels, a permanent queue can be
-created with:
+On the tested Ubuntu desktop, CUPS' temporary DNS-SD queue was sufficient for
+printing, but LibreOffice Writer exposed only generic standard paper sizes
+through that queue. Creating a permanent driverless CUPS queue allowed
+LibreOffice to obtain the E11's advertised custom media definitions correctly.
+
+The queue can be created with:
 
 ```sh
 sudo lpadmin \
     -p Supvan_E11 \
     -E \
-    -v ipp://localhost:8631/ipp/print/supvan_e11_t0183b2512213519 \
+    -v "ipp://localhost:8631/ipp/print/<name>" \
     -m everywhere
 ```
 
-CUPS then exposes the media as, for example:
+For the tested E11 configuration, CUPS then exposes the available media,
+including the physically verified `15x50mm` size:
 
 ```text
 PageSize/Media Size: 10x10mm.Borderless *15x50mm 50x120mm Custom.WIDTHxHEIGHT
 ```
 
-On the development Ubuntu system, LibreOffice did not expose the custom E11
-media usefully through CUPS' temporary DNS-SD queue and instead presented the
-generic standard-paper list. The permanent driverless queue above resolves
-that client-side integration problem without changing the Supvan protocol or
-raster implementation.
+The permanent queue is therefore a desktop-client integration workaround; it
+does not change the Supvan protocol, raster implementation or physical media
+handling.
 
 A working LibreOffice Writer configuration for the verified media is:
 
