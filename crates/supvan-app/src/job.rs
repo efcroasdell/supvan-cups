@@ -3,8 +3,11 @@ use std::time::Instant;
 
 use ipp_printer_app::{JobFailure, JobOptions, PrinterHandle, PrinterReason, RasterDriver};
 use supvan_proto::bitmap::{center_in_printhead, raster_to_column_major};
-use supvan_proto::buffer::{Density, PageOptions, split_into_buffers};
-use supvan_proto::compress::compress_buffers;
+use supvan_proto::buffer::{
+    Density, PageOptions, split_into_buffers, split_into_buffers_profiled,
+};
+use supvan_proto::compress::{compress_buffers, compress_buffers_individually};
+use supvan_proto::profile::PrintProfile;
 use supvan_proto::dither::{DitherMode, Ditherer, to_gray_line};
 use supvan_proto::error::Error as ProtoError;
 use supvan_proto::speed::calc_speed;
@@ -185,26 +188,45 @@ impl KsJob {
             center_in_printhead(&col_data, num_cols, self.width, self.printhead_width_dots);
         dump.printhead_pbm(&canvas, num_cols, canvas_bpl, self.printhead_width_dots);
 
-        // Zero margins: `split_into_buffers` treats them as leading/trailing
-        // columns *of the image*, which is right for the vendor's composed
-        // bitmap but not here — the IPP layer declares zero hard margins, so
-        // CUPS hands us exactly the printable area. Passing the default 8 made
-        // the tiler skip the first 8 columns and stop 8 short of the end,
-        // shifting the label 1mm and losing 2mm off the tail.
-        let buffers = split_into_buffers(
-            &canvas,
-            canvas_bpl as u8,
-            num_cols as u16,
-            0,
-            0,
-            // IPP carries one print-quality knob, so both trims move together —
-            // the vendor's own behaviour when its packed density fits in a byte.
-            Density::uniform(self.density),
-            PageOptions::default(),
-        );
+        // Zero margins: the IPP layer declares zero hard margins, so CUPS
+        // hands us exactly the printable area.
+        let profile = match dev.printer.as_ref() {
+            Some(printer) => printer.profile().await,
+            None => PrintProfile::TSeries,
+        };
 
-        let (compressed, avg) = compress_buffers(&buffers)
-            .map_err(|e| JobFailure::other(format!("compression: {e}")))?;
+        let (compressed, avg) = match profile {
+            PrintProfile::TSeries => {
+                let buffers = split_into_buffers(
+                    &canvas,
+                    canvas_bpl as u8,
+                    num_cols as u16,
+                    0,
+                    0,
+                    Density::uniform(self.density),
+                    PageOptions::default(),
+                );
+
+                compress_buffers(&buffers)
+                    .map_err(|e| JobFailure::other(format!("compression: {e}")))?
+            }
+            PrintProfile::ESeries => {
+                let buffers = split_into_buffers_profiled(
+                    &canvas,
+                    canvas_bpl as u8,
+                    num_cols as u16,
+                    0,
+                    0,
+                    Density::uniform(self.density),
+                    PageOptions::default(),
+                    profile,
+                );
+
+                compress_buffers_individually(&buffers)
+                    .map_err(|e| JobFailure::other(format!("compression: {e}")))?
+            }
+        };
+
         let speed = calc_speed(avg);
 
         let outcome: Result<(), JobFailure> = if let Some(ref printer) = dev.printer {
