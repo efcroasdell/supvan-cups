@@ -188,6 +188,11 @@ impl DeviceBackend for SupvanDeviceBackend {
         // Material query: surfaces labels-remaining + roll-swap detection.
         // Skipped on mock devices (dev.material() returns None).
         if let Some(mat) = dev.material().await {
+            let profile = match dev.printer.as_ref() {
+                Some(printer) => printer.profile().await,
+                None => supvan_proto::profile::PrintProfile::TSeries,
+            };
+
             let fp = RollFingerprint {
                 uuid: mat.uuid.clone(),
                 code: mat.code.clone(),
@@ -237,10 +242,18 @@ impl DeviceBackend for SupvanDeviceBackend {
 
             if let Some(remaining) = mat.remaining {
                 if remaining == 0 {
-                    reasons |= PrinterReason::MEDIA_EMPTY;
+                    if profile == supvan_proto::profile::PrintProfile::TSeries {
+                        reasons |= PrinterReason::MEDIA_EMPTY;
+                    } else {
+                        log::debug!(
+                            "{}: ignoring zero remaining-label count for E-series profile",
+                            config.name
+                        );
+                    }
                 } else if remaining <= MEDIA_LOW_THRESHOLD {
                     reasons |= PrinterReason::MARKER_SUPPLY_LOW;
                 }
+
                 // The firmware reports remaining *labels*, not a percentage, and
                 // we don't know the roll's original count. Clamp to 0–100 as a
                 // gauge: full while plenty remain, counting down near empty.
