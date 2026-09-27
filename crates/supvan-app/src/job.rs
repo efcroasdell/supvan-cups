@@ -54,7 +54,10 @@ fn now_iso() -> String {
 /// the mock simulator. Returns the raw reason bits with no fallback — callers
 /// decide how an empty set is treated (failure path forces `OTHER`, live
 /// polling leaves it empty = nothing wrong).
-pub(crate) fn reasons_from_status(s: &PrinterStatus) -> PrinterReason {
+pub(crate) fn reasons_from_status(
+    s: &PrinterStatus,
+    profile: PrintProfile,
+) -> PrinterReason {
     let mut reasons = PrinterReason::empty();
     if s.cover_open {
         reasons |= PrinterReason::COVER_OPEN;
@@ -65,7 +68,7 @@ pub(crate) fn reasons_from_status(s: &PrinterStatus) -> PrinterReason {
     if s.label_rw_error || s.label_mode_error || s.ribbon_rw_error {
         reasons |= PrinterReason::MEDIA_JAM;
     }
-    if s.ribbon_end {
+    if s.ribbon_end && profile.params().ribbon_end_is_fatal {
         reasons |= PrinterReason::MEDIA_NEEDED;
     }
     if s.head_temp_high {
@@ -74,8 +77,12 @@ pub(crate) fn reasons_from_status(s: &PrinterStatus) -> PrinterReason {
     reasons
 }
 
-pub fn failure_from_status(s: &PrinterStatus, context: &str) -> JobFailure {
-    let mut reasons = reasons_from_status(s);
+pub fn failure_from_status(
+    s: &PrinterStatus,
+    profile: PrintProfile,
+    context: &str,
+) -> JobFailure {
+    let mut reasons = reasons_from_status(s, profile);
     if reasons.is_empty() {
         reasons = PrinterReason::OTHER;
     }
@@ -237,8 +244,18 @@ impl KsJob {
                 Ok(()) => Ok(()),
                 Err(ProtoError::InvalidResponse(msg)) => {
                     if let Ok(Some(s)) = printer.query_status().await {
-                        if s.has_error() {
-                            Err(failure_from_status(&s, "print_compressed"))
+                        let profile = printer.profile().await;
+                        let fatal = s.label_rw_error
+                            || s.label_end
+                            || s.label_mode_error
+                            || s.ribbon_rw_error
+                            || (s.ribbon_end && profile.params().ribbon_end_is_fatal)
+                            || s.cover_open
+                            || s.head_temp_high
+                            || s.label_not_installed;
+
+                        if fatal {
+                            Err(failure_from_status(&s, profile, "print_compressed"))
                         } else {
                             Err(JobFailure::other(msg))
                         }

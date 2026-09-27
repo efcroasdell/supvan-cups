@@ -157,7 +157,8 @@ impl KsDevice {
             }
         };
 
-        crate::job::reasons_from_status(&status)
+        let profile = printer.profile().await;
+        crate::job::reasons_from_status(&status, profile)
     }
 
     /// Check if this is a mock device (no real printer connection).
