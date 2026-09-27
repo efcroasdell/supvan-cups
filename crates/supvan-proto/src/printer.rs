@@ -364,10 +364,15 @@ impl Printer {
         // leaving `buf_full` stuck set.
         tokio::time::sleep(BLOCK_SETTLE).await;
 
-        // CMD_BUF_FULL: param=compressed_length, param2=speed
-        log::info!("BUF_FULL: len={}, speed={}", compressed_len, speed);
+        // CMD_BUF_FULL parameters are profile-dependent.
+        let (buf_len, buf_speed) = if self.profile.params().buf_full_reports_length {
+            (compressed_len, speed)
+        } else {
+            (0, 0)
+        };
+        log::info!("BUF_FULL: len={}, speed={}", buf_len, buf_speed);
         self.transport
-            .send_cmd_two(CMD_BUF_FULL, compressed_len, speed)
+            .send_cmd_two(CMD_BUF_FULL, buf_len, buf_speed)
             .await?;
 
         // `buf_full` only rises once the firmware has taken the block in.
