@@ -430,13 +430,20 @@ impl Printer {
             )));
         }
 
-        // Step 3: Start print
+        // Step 3: Optional profile-specific pre-start command, then START_PRINT.
+        if let Some((cmd, param)) = self.profile.params().pre_start_cmd {
+            self.transport.send_cmd(cmd, param).await?;
+        }
         self.start_print().await?;
 
         // Step 4: Wait printing station
         self.wait_printing(PRINTING_ATTEMPTS)
             .await?
             .ok_or_else(|| Error::InvalidResponse("timeout waiting for printing station".into()))?;
+
+        if let Some((cmd, param)) = self.profile.params().post_start_cmd {
+            self.transport.send_cmd(cmd, param).await?;
+        }
 
         // Step 5: Transfer one block per print buffer, waiting for room before
         // each. `buf_full` is the firmware's flow control — it decompresses
