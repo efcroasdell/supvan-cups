@@ -75,6 +75,18 @@ Relative to the upstream baseline used for this work
   selected even though the E11 reports its internal device name as `G15`.
 - E-series-specific interpretation of the `ribbon_end` status bit during
   thermal printing.
+- Automatic selection of the E-series profile for discovered E11 BLE devices,
+  without relying on the printer's misleading internal `G15` device name.
+- A provisional E11 model family with 203 dpi geometry and the physically
+  verified 15 mm x 50 mm media definition.
+- Profile-aware IPP print-buffer construction and per-buffer E-series LZMA
+  compression.
+- Profile-aware IPP status and error handling, including non-fatal E-series
+  `ribbon_end` behaviour.
+- E-series media-status handling that does not treat the E11's observed
+  `remaining=0` material counter alone as `media-empty`.
+- End-to-end CUPS/IPP printing support verified from a normal desktop
+  application through BLE to the physical E11.
 
 ## Physical E11 verification
 
@@ -90,9 +102,74 @@ The following has now been demonstrated on a physical E11 over BLE:
 7. Coherent printed raster geometry rather than corrupted or random data.
 8. Normal print completion despite the E11 asserting the status bit decoded as
    `ribbon_end` during printing.
+9. E11 discovery and model selection through the IPP printer application.
+10. DNS-SD/Avahi advertisement as a Supvan E11 IPP Everywhere printer.
+11. CUPS submission of a real print job through the IPP service.
+12. Correct reporting of loaded 15 mm x 50 mm media without a false
+    `media-empty` condition.
+13. Physical printing from LibreOffice Writer through a permanent driverless
+    CUPS queue.
+14. Standard IPP Landscape orientation producing the expected left-to-right
+    printing along the label ribbon.
 
-The successful test used two separately compressed E-series buffers and
-completed with the printer returning to an idle state.
+The successful protocol test used two separately compressed E-series buffers
+and completed with the printer returning to an idle state. Subsequent desktop
+tests verified the complete application -> CUPS -> IPP -> BLE -> E11 path.
+
+## Verified CUPS and desktop printing
+
+The E11 has also been verified end-to-end through the normal Linux desktop
+printing stack:
+
+1. `supvan-printer-app` runs as the user-scoped systemd service.
+2. The E11 is advertised over DNS-SD/Avahi as an IPP Everywhere printer.
+3. CUPS discovers the printer and can submit jobs through the IPP service.
+4. A permanent driverless CUPS queue created with `-m everywhere` exposes the
+   E11 media definitions correctly to desktop applications.
+5. LibreOffice Writer has successfully printed formatted labels through CUPS
+   to the physical E11 over BLE.
+6. Standard IPP landscape orientation produces the expected left-to-right
+   printing along the label ribbon.
+
+For the physically verified 15 mm x 50 mm labels, a permanent queue can be
+created with:
+
+```sh
+sudo lpadmin \
+    -p Supvan_E11 \
+    -E \
+    -v ipp://localhost:8631/ipp/print/supvan_e11_t0183b2512213519 \
+    -m everywhere
+```
+
+CUPS then exposes the media as, for example:
+
+```text
+PageSize/Media Size: 10x10mm.Borderless *15x50mm 50x120mm Custom.WIDTHxHEIGHT
+```
+
+On the development Ubuntu system, LibreOffice did not expose the custom E11
+media usefully through CUPS' temporary DNS-SD queue and instead presented the
+generic standard-paper list. The permanent driverless queue above resolves
+that client-side integration problem without changing the Supvan protocol or
+raster implementation.
+
+A working LibreOffice Writer configuration for the verified media is:
+
+- document page: 5.00 cm x 1.50 cm;
+- printer: `Supvan_E11`;
+- media: `15x50mm`;
+- orientation: Landscape.
+
+Fonts, point sizes, bold, italic, alignment, graphics and other document
+formatting remain normal application/print-stack functions. The Supvan driver
+receives the resulting raster; it does not need to implement those formatting
+features itself.
+
+The E11 material query reports `remaining=0` on the tested loaded roll even
+though the printer reports neither `label_end` nor `label_not_installed`.
+E-series status handling therefore does not treat that zero counter alone as
+`media-empty`; the physical media-status bits remain authoritative.
 
 ## Current experimental assumptions
 
