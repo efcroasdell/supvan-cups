@@ -154,6 +154,7 @@ impl DeviceBackend for SupvanDeviceBackend {
             // Register the name → transport mapping so open_supvan can resolve it.
             crate::device::register_supvan(
                 &slug(&name),
+                model.clone(),
                 usb.as_ref().map(|u| u.hidraw_path.clone()),
                 bt.as_ref().map(|b| b.address.clone()),
                 ble.as_ref().map(|e| e.address.clone()),
