@@ -547,6 +547,45 @@ impl Printer {
             mat.height_mm as u32
         };
 
+        if matches!(self.profile, PrintProfile::ESeries) {
+            let printhead_dots = self.profile.params().default_printhead_dots;
+            let label_width_mm = (mat.width_mm as u32)
+                .min(printhead_dots / crate::bitmap::DOTS_PER_MM);
+            let margin = self.profile.params().margin_dots;
+
+            let (image_data, _w, h, bpl) =
+                crate::bitmap::create_test_pattern_profiled(
+                    label_width_mm,
+                    height_mm,
+                    printhead_dots,
+                    self.profile,
+                );
+
+            let buffers = crate::buffer::split_into_buffers_profiled(
+                &image_data,
+                bpl as u8,
+                h as u16,
+                margin,
+                margin,
+                density,
+                page,
+                self.profile,
+            );
+
+            log::info!(
+                "E-series test print: {}mm x {}mm, {} buffers",
+                label_width_mm,
+                height_mm,
+                buffers.len()
+            );
+
+            let (compressed, avg) =
+                crate::compress::compress_buffers_individually(&buffers)?;
+            let speed = calc_speed(avg);
+
+            return self.print_compressed(&compressed, speed).await;
+        }
+
         log::info!(
             "test print: {}mm x {}mm, black={} red={}, save_paper={}",
             label_width_mm,
